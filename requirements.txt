@@ -2,3 +2,4 @@ pytelegrambotapi
 schedule
 requests
 beautifulsoup4
+python-dotenv
