@@ -6,12 +6,12 @@ import telebot
 import schedule
 
 # ================== Настройки ==================
-API_TOKEN  = "<7871400456:AAGqreZevm6GpViypbYYQ8wjcs4VnV8ueR0>"
-YOUR_CHAT  = 631229969  # замени на свой chat_id
+API_TOKEN  = os.getenv("API_TOKEN")  # из Render environment
+YOUR_CHAT  = int(os.getenv("YOUR_CHAT_ID"))  # из Render environment
 WATCHFILE  = "watchlist.json"
 # URL публичного API из репозитория XanaOG
-API_BASE   = "https://grow-garden-api.herokuapp.com/api"  # пример
-CHECK_FREQ = 5  # минуты
+API_BASE   = os.getenv("API_BASE", "https://grow-garden-api.herokuapp.com/api")  # или свой API URL
+CHECK_FREQ = 5  # минуты 5  # минуты
 
 bot = telebot.TeleBot(API_TOKEN)
 notified = set()
