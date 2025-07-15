@@ -7,7 +7,7 @@ import schedule
 
 # ================== Настройки ==================
 API_TOKEN  = "<7871400456:AAGqreZevm6GpViypbYYQ8wjcs4VnV8ueR0>"
-YOUR_CHAT  = <YOUR_CHAT_ID>  # замени на свой chat_id
+YOUR_CHAT  = <631229969>  # замени на свой chat_id
 WATCHFILE  = "watchlist.json"
 # URL публичного API из репозитория XanaOG
 API_BASE   = "https://grow-garden-api.herokuapp.com/api"  # пример
