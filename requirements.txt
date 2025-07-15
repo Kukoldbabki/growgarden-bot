@@ -1,0 +1,4 @@
+pytelegrambotapi
+schedule
+requests
+beautifulsoup4
