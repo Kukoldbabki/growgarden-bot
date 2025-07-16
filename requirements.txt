@@ -1,5 +1,2 @@
 requests
-telebot
-pytelegrambotapi
-schedule
-beautifulsoup4
+pyTelegramBotAPI
