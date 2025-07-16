@@ -1,3 +1,5 @@
 requests
 telebot
 pytelegrambotapi
+schedule
+beautifulsoup4
