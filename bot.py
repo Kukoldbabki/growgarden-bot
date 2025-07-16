@@ -9,7 +9,7 @@ from telebot import types
 # ================== НАСТРОЙКИ ==================
 API_TOKEN = "7871400456:AAGqreZevm6GpViypbYYQ8wjcs4VnV8ueR0"
 WATCHFILE = "watchlist.json"
-STATE_FILE = "bot_state.json"  # Для сохранения состояния
+STATE_FILE = "bot_state.json"
 API_BASE = "https://grow-garden-api.herokuapp.com/api"
 CHECK_INTERVAL = 300  # 5 минут в секундах
 # ================================================
@@ -55,7 +55,7 @@ def fetch_all_items():
         return [item["name"] for item in resp.json()]
     except Exception as e:
         logger.error(f"Ошибка получения предметов: {str(e)}")
-        return []  # Возвращаем пустой список при ошибке
+        return []
 
 # --------- ТЕЛЕГРАМ ИНТЕРФЕЙС ---------
 def main_keyboard():
@@ -143,18 +143,15 @@ def check_stock():
     changes_detected = False
     
     try:
-        # Получаем текущий сток
         resp = requests.get(f"{API_BASE}/stock", timeout=15)
         resp.raise_for_status()
         current_stock = resp.json()
         
-        # Ищем изменения для каждого пользователя
         for user_id, tracked_items in user_data.items():
             for item in current_stock:
                 if item["name"] in tracked_items and item.get("in_stock"):
                     item_key = f"{user_id}|{item['name']}"
                     
-                    # Отправляем только НОВЫЕ позиции
                     if item_key not in notified:
                         try:
                             bot.send_message(
@@ -169,7 +166,6 @@ def check_stock():
                         except Exception as e:
                             logger.error(f"Ошибка отправки: {e}")
         
-        # Очистка устаревших уведомлений
         for item_key in list(notified):
             user_id, item_name = item_key.split("|", 1)
             if not any(i["name"] == item_name and i.get("in_stock") for i in current_stock):
@@ -189,12 +185,34 @@ def background_checker():
         check_stock()
         time.sleep(CHECK_INTERVAL)
 
+def cleanup_webhook():
+    """Очистка вебхуков перед запуском"""
+    for _ in range(3):
+        try:
+            requests.get(f"https://api.telegram.org/bot{API_TOKEN}/deleteWebhook")
+            time.sleep(0.5)
+            logger.info("Вебхук успешно удален")
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка удаления вебхука: {e}")
+            time.sleep(1)
+    return False
+
 if __name__ == "__main__":
-    logger.info("Бот запущен!")
+    logger.info("Запуск бота...")
     
-    # Запускаем мониторинг в отдельном потоке
+    # Принудительная очистка вебхуков
+    cleanup_webhook()
+    
+    # Запуск мониторинга
     monitor_thread = threading.Thread(target=background_checker, daemon=True)
     monitor_thread.start()
     
-    # Основной поток - обработка Telegram
-    bot.infinity_polling()
+    # Основной поток
+    logger.info("Запуск long polling...")
+    while True:
+        try:
+            bot.infinity_polling()
+        except Exception as e:
+            logger.error(f"Ошибка polling: {e}")
+            time.sleep(10)
