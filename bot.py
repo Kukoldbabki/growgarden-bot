@@ -4,26 +4,30 @@ import logging
 import threading
 import requests
 import telebot
-from telebot import types
+from telebot import apihelper, types
 
 # ================== НАСТРОЙКИ ==================
-API_TOKEN = "7871400456:AAGqreZevm6GpViypbYYQ8wjcs4VnV8ueR0"
+API_TOKEN = "7871400456:AAGqreZevm6GpViypbYYQ8wjcs4VnV8ueR0"  # Замени на свой токен
 WATCHFILE = "watchlist.json"
 STATE_FILE = "bot_state.json"
 API_BASE = "https://grow-garden-api.herokuapp.com/api"
-CHECK_INTERVAL = 300  # 5 минут в секундах
+CHECK_INTERVAL = 300  # 5 минут (в секундах)
 # ================================================
 
 # Настройка логирования
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# Устанавливаем таймауты для запросов к Telegram API
+apihelper.READ_TIMEOUT = 30
+apihelper.CONNECT_TIMEOUT = 10
+
 bot = telebot.TeleBot(API_TOKEN)
 
-# --------- УЛУЧШЕННОЕ ХРАНИЛИЩЕ ---------
+# --------- ХРАНИЛИЩЕ ДАННЫХ ---------
 def load_data():
     try:
         with open(WATCHFILE, "r", encoding="utf-8") as f:
@@ -46,18 +50,17 @@ def save_state(notified_set):
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump({"notified": list(notified_set)}, f, ensure_ascii=False)
 
-# --------- ЗАЩИЩЕННЫЙ ПАРСИНГ ---------
+# --------- ПАРСИНГ API ---------
 def fetch_all_items():
-    """Получение предметов с обработкой ошибок"""
     try:
         resp = requests.get(f"{API_BASE}/items", timeout=10)
         resp.raise_for_status()
         return [item["name"] for item in resp.json()]
     except Exception as e:
-        logger.error(f"Ошибка получения предметов: {str(e)}")
+        logger.error(f"Ошибка получения предметов: {e}")
         return []
 
-# --------- ТЕЛЕГРАМ ИНТЕРФЕЙС ---------
+# --------- ТЕЛЕГРАМ-ИНТЕРФЕЙС ---------
 def main_keyboard():
     kb = types.InlineKeyboardMarkup()
     kb.row(
@@ -134,13 +137,10 @@ def toggle_item(call):
         reply_markup=items_keyboard(call.from_user.id)
     )
 
-# --------- ЯДРО МОНИТОРИНГА ---------
+# --------- МОНИТОРИНГ ИЗМЕНЕНИЙ ---------
 def check_stock():
-    """Проверка изменений с защитой от сбоев"""
-    logger.info("Запуск проверки стока...")
     notified = load_state()
     user_data = load_data()
-    changes_detected = False
     
     try:
         resp = requests.get(f"{API_BASE}/stock", timeout=15)
@@ -161,58 +161,47 @@ def check_stock():
                                 parse_mode="Markdown"
                             )
                             notified.add(item_key)
-                            changes_detected = True
-                            logger.info(f"Уведомление отправлено {user_id} - {item['name']}")
+                            save_state(notified)
                         except Exception as e:
                             logger.error(f"Ошибка отправки: {e}")
         
+        # Очистка устаревших уведомлений
         for item_key in list(notified):
             user_id, item_name = item_key.split("|", 1)
             if not any(i["name"] == item_name and i.get("in_stock") for i in current_stock):
                 notified.remove(item_key)
-                changes_detected = True
-        
-        if changes_detected:
-            save_state(notified)
-            
+                save_state(notified)
+                
     except Exception as e:
-        logger.error(f"CRITICAL ERROR: {str(e)}")
+        logger.error(f"Ошибка проверки стока: {e}")
 
-# --------- ЗАПУСК ФОНОВОГО МОНИТОРИНГА ---------
-def background_checker():
-    """Автономный поток проверки"""
-    while True:
-        check_stock()
-        time.sleep(CHECK_INTERVAL)
-
-def cleanup_webhook():
-    """Очистка вебхуков перед запуском"""
-    for _ in range(3):
-        try:
-            requests.get(f"https://api.telegram.org/bot{API_TOKEN}/deleteWebhook")
-            time.sleep(0.5)
-            logger.info("Вебхук успешно удален")
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка удаления вебхука: {e}")
-            time.sleep(1)
-    return False
-
-if __name__ == "__main__":
+# --------- ЗАПУСК БОТА ---------
+def run_bot():
     logger.info("Запуск бота...")
     
-    # Принудительная очистка вебхуков
-    cleanup_webhook()
+    # Удаляем все вебхуки перед стартом
+    try:
+        bot.remove_webhook()
+        time.sleep(1)
+    except Exception as e:
+        logger.error(f"Ошибка удаления вебхука: {e}")
     
-    # Запуск мониторинга
-    monitor_thread = threading.Thread(target=background_checker, daemon=True)
+    # Запускаем мониторинг в фоне
+    def background_monitor():
+        while True:
+            check_stock()
+            time.sleep(CHECK_INTERVAL)
+    
+    monitor_thread = threading.Thread(target=background_monitor, daemon=True)
     monitor_thread.start()
     
-    # Основной поток
-    logger.info("Запуск long polling...")
+    # Основной цикл бота (с перезапуском при ошибках)
     while True:
         try:
             bot.infinity_polling()
         except Exception as e:
-            logger.error(f"Ошибка polling: {e}")
-            time.sleep(10)
+            logger.error(f"Бот упал: {e}")
+            time.sleep(5)  # Пауза перед перезапуском
+
+if __name__ == "__main__":
+    run_bot()
