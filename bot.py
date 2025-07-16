@@ -114,23 +114,42 @@ def check_stock():
         logger.error(f"Ошибка проверки стока: {e}")
 
 def run_bot():
-    logger.info("Запуск бота...")
+    # Жесткий сброс всех сессий
+    for _ in range(3):
+        try:
+            requests.post(f"https://api.telegram.org/bot{API_TOKEN}/deleteWebhook", 
+                        params={'drop_pending_updates': True})
+            requests.post(f"https://api.telegram.org/bot{API_TOKEN}/close")
+            time.sleep(2)
+            break
+        except:
+            time.sleep(3)
     
-    # Принудительно удаляем все вебхуки
+    # Проверяем, что бот не запущен где-то еще
     try:
-        bot.remove_webhook()
-        time.sleep(2)
-        logger.info("Вебхуки удалены")
+        bot_info = requests.get(f"https://api.telegram.org/bot{API_TOKEN}/getMe").json()
+        if not bot_info['ok']:
+            raise RuntimeError("Не удалось получить информацию о боте")
     except Exception as e:
-        logger.error(f"Ошибка удаления вебхуков: {e}")
-    
-    # Проверяем, не запущен ли уже бот
-    try:
-        me = bot.get_me()
-        logger.info(f"Бот @{me.username} готов к работе")
-    except Exception as e:
-        logger.error(f"Ошибка инициализации бота: {e}")
+        logger.error(f"Критическая ошибка: {e}")
         return
+
+    # Запускаем бота с защитой
+    restart_count = 0
+    while restart_count < 5:  # Максимум 5 перезапусков
+        try:
+            logger.info(f"Запуск бота (попытка {restart_count + 1})")
+            bot.infinity_polling(
+                timeout=25,
+                long_polling_timeout=20,
+                logger_level=logging.INFO
+            )
+        except Exception as e:
+            logger.error(f"Бот упал: {e}")
+            restart_count += 1
+            time.sleep(10)
+    
+    logger.critical("Бот не смог запуститься после 5 попыток")
     
     # Фоновый мониторинг
     def monitor():
