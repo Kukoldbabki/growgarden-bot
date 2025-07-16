@@ -31,12 +31,13 @@ def index():
     return 'Bot is running!'
 
 # --- Logic ---
+
 def load_watchlist():
     try:
         with open(WATCHFILE, 'r') as f:
             return json.load(f)
     except:
-        return []
+        return {}
 
 def save_watchlist(data):
     with open(WATCHFILE, 'w') as f:
@@ -44,59 +45,68 @@ def save_watchlist(data):
 
 def fetch_items():
     """
-    Тянем JSON со stock-эндпоинта:
-    GET {API_BASE}/stock
-    Ожидаем ответ вида: [ { "name": "...", "price": 123, "in_stock": true }, ... ]
+    Запрашиваем список товаров через API /stock
+    Ожидается: [{"name": "Magic Tomato", "price": 50, "in_stock": true}, ...]
+    Возвращаем список имён.
     """
     try:
         resp = requests.get(f"{API_BASE}/stock", timeout=10)
         resp.raise_for_status()
         data = resp.json()
-        # Возвращаем только список имён для меню
-        return [ item["name"] for item in data ]
+        # debug print: print(data)
+        return [item.get("name", "unknown") for item in data]
     except Exception as e:
         print(f"[fetch_items error] {e}")
         return []
 
-
+# --- Handlers ---
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("📈 Отслеживать", "👁️ Просмотр")
-    bot.send_message(message.chat.id, "Выбери действие:", reply_markup=markup)
+    markup.row('📈 Отслеживать', '👁️ Просмотр')
+    bot.send_message(message.chat.id, 'Выбери действие:', reply_markup=markup)
 
-@bot.message_handler(func=lambda m: m.text == "👁️ Просмотр")
+@bot.message_handler(func=lambda m: m.text == '👁️ Просмотр')
 def show_watchlist(message):
-    items = load_watchlist()
-    if items:
-        msg = '\n'.join(items)
-        bot.send_message(message.chat.id, f"🎯 Отслеживаемые предметы:\n{msg}")
+    data = load_watchlist().get(str(message.chat.id), [])
+    if data:
+        msg = '\n'.join(data)
+        bot.send_message(message.chat.id, f'🎯 Отслеживаемые предметы:\n{msg}')
     else:
-        bot.send_message(message.chat.id, "Ничего не отслеживается")
+        bot.send_message(message.chat.id, 'Ничего не отслеживается')
 
-@bot.message_handler(func=lambda m: m.text == "📈 Отслеживать")
+@bot.message_handler(func=lambda m: m.text == '📈 Отслеживать')
 def track_items(message):
     items = fetch_items()
     if not items:
-        bot.send_message(message.chat.id, "Ошибка загрузки предметов")
+        bot.send_message(message.chat.id, 'Ошибка загрузки предметов')
         return
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    for item in items[:10]:
-        keyboard.add(item.get("name", "Неизвестно"))
-    bot.send_message(message.chat.id, "Выбери предмет для отслеживания:", reply_markup=keyboard)
+    for name in items:
+        keyboard.add(name)
+    bot.send_message(message.chat.id, 'Выбери предмет для отслеживания:', reply_markup=keyboard)
 
 @bot.message_handler(func=lambda m: True)
 def handle_all(message):
-    if message.text:
-        watchlist = load_watchlist()
-        if message.text not in watchlist:
-            watchlist.append(message.text)
-            save_watchlist(watchlist)
-            bot.send_message(message.chat.id, f"✅ Добавлено в отслеживание: {message.text}")
-        else:
-            bot.send_message(message.chat.id, f"Уже отслеживается: {message.text}")
+    name = message.text
+    items = fetch_items()
+    if name not in items:
+        bot.send_message(message.chat.id, f'❌ Предмет “{name}” не найден в списке.')
+        return
+    data = load_watchlist()
+    uid = str(message.chat.id)
+    wl = set(data.get(uid, []))
+    if name in wl:
+        bot.send_message(message.chat.id, f'Уже отслеживается: {name}')
+    else:
+        wl.add(name)
+        data[uid] = list(wl)
+        save_watchlist(data)
+        bot.send_message(message.chat.id, f'✅ Добавлено в отслеживание: {name}')
 
-# --- Start ---
+# --- Monitoring removed since webhook handles only commands ---
+
+# --- Start App ---
 if __name__ == '__main__':
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL)
