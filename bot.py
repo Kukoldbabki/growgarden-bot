@@ -44,21 +44,15 @@ def save_watchlist(data):
         json.dump(data, f)
 
 def fetch_items():
-    """
-    Запрашиваем список товаров через API /stock
-    Ожидается: [{"name": "Magic Tomato", "price": 50, "in_stock": true}, ...]
-    Возвращаем список имён.
-    """
     try:
         resp = requests.get(f"{API_BASE}/stock", timeout=10)
         resp.raise_for_status()
         data = resp.json()
-        # debug print: print(data)
+        print("[DEBUG] response:", data)  # ← ДОБАВЬ ЭТО
         return [item.get("name", "unknown") for item in data]
     except Exception as e:
         print(f"[fetch_items error] {e}")
         return []
-
 # --- Handlers ---
 @bot.message_handler(commands=['start'])
 def start(message):
