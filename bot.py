@@ -122,4 +122,5 @@ if __name__ == "__main__":
             schedule.run_pending()
             time.sleep(1)
     _thread.start_new_thread(loop, ())
-    bot.infinity_polling()
+    bot.polling(none_stop=True, interval=0, timeout=20)
+
