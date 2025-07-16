@@ -43,10 +43,21 @@ def save_watchlist(data):
         json.dump(data, f)
 
 def fetch_items():
-    res = requests.get(f"{API_BASE}/stocks.php")
-    if res.status_code == 200:
-        return res.json()
-    return []
+    """
+    Тянем JSON со stock-эндпоинта:
+    GET {API_BASE}/stock
+    Ожидаем ответ вида: [ { "name": "...", "price": 123, "in_stock": true }, ... ]
+    """
+    try:
+        resp = requests.get(f"{API_BASE}/stock", timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        # Возвращаем только список имён для меню
+        return [ item["name"] for item in data ]
+    except Exception as e:
+        print(f"[fetch_items error] {e}")
+        return []
+
 
 @bot.message_handler(commands=['start'])
 def start(message):
